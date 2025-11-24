@@ -1,167 +1,135 @@
 <!DOCTYPE html>
-<html lang="en">
-
+<html>
 <head>
-    <meta charset="UTF-8">
-    <title>Football Video Analyzer</title>
-
-    <style>
-        body {
-            background: #0f1824;
-            color: white;
-            font-family: Arial;
-            padding: 20px;
-        }
-        
-        .container {
-            max-width: 900px;
-            margin: auto;
-        }
-        
-        video {
-            width: 100%;
-            border: 3px solid #3fa9f5;
-            border-radius: 10px;
-            margin-top: 20px;
-        }
-        
-        .events {
-            margin-top: 20px;
-            padding: 15px;
-            background: #162230;
-            border-radius: 8px;
-        }
-        
-        .event-item {
-            background: #233040;
-            padding: 10px;
-            margin-top: 10px;
-            border-radius: 6px;
-            border-left: 4px solid #3fa9f5;
-        }
-        
-        .screenshot {
-            width: 160px;
-            border-radius: 6px;
-            margin-top: 5px;
-            border: 2px solid #3fa9f5;
-        }
-        
-        button {
-            padding: 10px 20px;
-            background: #3fa9f5;
-            color: #fff;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            margin-top: 10px;
-        }
-        
-        button:hover {
-            background: #5fc3ff;
-        }
-    </style>
+  <title>Advanced Mini VAR</title>
+  <style>
+    body { background: #000; color: #fff; text-align: center; font-family: Arial; }
+    video { width: 90%; border: 3px solid white; }
+    canvas { position: absolute; left: 0; top: 0; }
+    #result { font-size: 28px; margin-top: 20px; }
+  </style>
 </head>
-
 <body>
-    <div class="container">
-        <h1>⚽ Automatic Football Video Analyzer</h1>
+  <h1>Mini VAR - Modern AI</h1>
+  <video id="video" autoplay playsinline></video>
+  <canvas id="canvas"></canvas>
+  <div id="result">Loading …</div>
 
-        <input type="file" id="videoInput" accept="video/*"><br>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.22.0"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/hand-pose-detection"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl"></script>
 
-        <video id="video" controls></video>
+  <script>
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const resultDiv = document.getElementById('result');
 
-        <button onclick="startAnalysis()">Start Analyzing</button>
+    let handDetector, objectModel;
 
-        <div class="events" id="eventsList">
-            <h3>Detected Events:</h3>
-        </div>
-    </div>
+    async function init() {
+      await tf.setBackend('webgl');
 
-    <script>
-        let video = document.getElementById("video");
-        let eventsList = document.getElementById("eventsList");
+      // Load COCO-SSD model
+      objectModel = await cocoSsd.load();
+      console.log('Object detection model loaded');
 
-        let goalkeeperColor = "yellow"; // demo logic
-        let eventCounter = 0;
+      // Load hand-pose detector
+      const model = handPoseDetection.SupportedModels.MediaPipeHands;
+      handDetector = await handPoseDetection.createDetector(model, {
+        runtime: 'tfjs',  // or "mediapipe"
+        modelType: 'lite'
+      });
+      console.log('Hand pose model loaded');
 
-        // Load video
-        document.getElementById("videoInput").addEventListener("change", function() {
-            let file = this.files[0];
-            if (file) {
-                video.src = URL.createObjectURL(file);
+      startVideo();
+    }
+
+    async function startVideo() {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      video.srcObject = stream;
+      video.onloadedmetadata = () => {
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        detectLoop();
+      };
+    }
+
+    async function detectLoop() {
+      ctx.drawImage(video, 0, 0);
+
+      const hands = await handDetector.estimateHands(video);
+      const objects = await objectModel.detect(video);
+
+      let handball = false;
+      let goal = false;
+      let ballDetected = false;
+
+      // find ball
+      let ball = objects.find(o => o.class === 'sports ball');
+      if (ball) {
+        ballDetected = true;
+        // draw box
+        ctx.strokeStyle = 'yellow';
+        ctx.lineWidth = 4;
+        ctx.strokeRect(ball.bbox[0], ball.bbox[1], ball.bbox[2], ball.bbox[3]);
+      }
+
+      // check hand-ball distance
+      if (hands.length > 0 && ballDetected) {
+        for (let h of hands) {
+          for (let key of h.keypoints) {
+            let x = key.x * canvas.width;
+            let y = key.y * canvas.height;
+            // draw keypoints
+            ctx.fillStyle = 'red';
+            ctx.beginPath();
+            ctx.arc(x, y, 5, 0, 2 * Math.PI);
+            ctx.fill();
+
+            // distance from ball center
+            let bx = ball.bbox[0] + ball.bbox[2] / 2;
+            let by = ball.bbox[1] + ball.bbox[3] / 2;
+            let dist = Math.hypot(bx - x, by - y);
+            if (dist < (ball.bbox[2] / 2) + 30) {  // threshold
+              handball = true;
             }
-        });
-
-        // MAIN FUNCTION
-        function startAnalysis() {
-            if (!video.src) {
-                alert("Please upload a video first!");
-                return;
-            }
-
-            let interval = 2000; // scan every 2 seconds
-            let duration = video.duration * 1000;
-
-            let t = 0;
-            let scanner = setInterval(() => {
-                if (t >= duration) {
-                    clearInterval(scanner);
-                    alert("Analysis completed!");
-                    return;
-                }
-
-                video.currentTime = t / 1000;
-
-                // Simulate detection
-                simulateDetection(video.currentTime);
-
-                t += interval;
-
-            }, interval);
+          }
         }
+      }
 
-        // DEMO: Random event generator
-        function simulateDetection(time) {
+      // goal detection: define a goal line area
+      // for example: bottom region of canvas
+      const lineY = canvas.height * 0.8;
+      ctx.strokeStyle = 'white';
+      ctx.beginPath();
+      ctx.moveTo(0, lineY);
+      ctx.lineTo(canvas.width, lineY);
+      ctx.stroke();
 
-            // 30% chance of event
-            if (Math.random() < 0.7) return;
-
-            let eventType = Math.random() < 0.5 ? "Handball" : "Foul";
-
-            // Ignore goalkeeper handball
-            if (eventType === "Handball" && goalkeeperColor === "yellow") {
-                console.log("Goalkeeper hand ignored.");
-                return;
-            }
-
-            createScreenshot(eventType, time);
+      if (ballDetected) {
+        let byCenter = ball.bbox[1] + ball.bbox[3] / 2;
+        if (byCenter > lineY) {
+          goal = true;
         }
+      }
 
-        function createScreenshot(eventType, time) {
-            let canvas = document.createElement("canvas");
-            let ctx = canvas.getContext("2d");
+      // decide result
+      if (handball) {
+        resultDiv.innerText = '❌ HANDBALL – FOUL';
+      } else if (goal) {
+        resultDiv.innerText = '⚽ GOAL ALLOWED';
+      } else if (ballDetected) {
+        resultDiv.innerText = 'Ball detected';
+      } else {
+        resultDiv.innerText = 'No ball';
+      }
 
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
+      requestAnimationFrame(detectLoop);
+    }
 
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-            let imageURL = canvas.toDataURL("image/png");
-
-            eventCounter++;
-
-            // Add to event list
-            let div = document.createElement("div");
-            div.className = "event-item";
-            div.innerHTML = `
-        <b>${eventCounter}. ${eventType}</b><br>
-        Time: ${time.toFixed(2)} seconds<br>
-        <img src="${imageURL}" class="screenshot">
-    `;
-            eventsList.appendChild(div);
-        }
-    </script>
+    init();
+  </script>
 </body>
-
 </html>
