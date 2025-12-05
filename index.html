@@ -1,135 +1,42 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
+
 <head>
-  <title>Advanced Mini VAR</title>
-  <style>
-    body { background: #000; color: #fff; text-align: center; font-family: Arial; }
-    video { width: 90%; border: 3px solid white; }
-    canvas { position: absolute; left: 0; top: 0; }
-    #result { font-size: 28px; margin-top: 20px; }
-  </style>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Football Quiz Login</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="style.css" />
 </head>
-<body>
-  <h1>Mini VAR - Modern AI</h1>
-  <video id="video" autoplay playsinline></video>
-  <canvas id="canvas"></canvas>
-  <div id="result">Loading …</div>
 
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.22.0"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/hand-pose-detection"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl"></script>
+<body class="bg-dark text-white">
 
-  <script>
-    const video = document.getElementById('video');
-    const canvas = document.getElementById('canvas');
-    const ctx = canvas.getContext('2d');
-    const resultDiv = document.getElementById('result');
+    <div class="container d-flex justify-content-center align-items-center vh-100">
+        <div class="card p-4 shadow-lg bg-secondary text-white w-100" style="max-width: 380px;">
+            <h2 class="text-center mb-3">Football Quiz Login</h2>
 
-    let handDetector, objectModel;
+            <form id="loginForm">
+                <div class="mb-3">
+                    <label class="form-label">Name</label>
+                    <input type="text" class="form-control" id="username" required>
+                </div>
 
-    async function init() {
-      await tf.setBackend('webgl');
+                <div class="mb-3">
+                    <label class="form-label">Email</label>
+                    <input type="email" class="form-control" id="email" required>
+                </div>
 
-      // Load COCO-SSD model
-      objectModel = await cocoSsd.load();
-      console.log('Object detection model loaded');
+                <div class="mb-3">
+                    <label class="form-label">Password</label>
+                    <input type="password" class="form-control" id="password" required>
+                </div>
 
-      // Load hand-pose detector
-      const model = handPoseDetection.SupportedModels.MediaPipeHands;
-      handDetector = await handPoseDetection.createDetector(model, {
-        runtime: 'tfjs',  // or "mediapipe"
-        modelType: 'lite'
-      });
-      console.log('Hand pose model loaded');
+                <button class="btn btn-warning w-100" type="submit">Start Quiz</button>
+            </form>
+        </div>
+    </div>
 
-      startVideo();
-    }
-
-    async function startVideo() {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-      video.srcObject = stream;
-      video.onloadedmetadata = () => {
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        detectLoop();
-      };
-    }
-
-    async function detectLoop() {
-      ctx.drawImage(video, 0, 0);
-
-      const hands = await handDetector.estimateHands(video);
-      const objects = await objectModel.detect(video);
-
-      let handball = false;
-      let goal = false;
-      let ballDetected = false;
-
-      // find ball
-      let ball = objects.find(o => o.class === 'sports ball');
-      if (ball) {
-        ballDetected = true;
-        // draw box
-        ctx.strokeStyle = 'yellow';
-        ctx.lineWidth = 4;
-        ctx.strokeRect(ball.bbox[0], ball.bbox[1], ball.bbox[2], ball.bbox[3]);
-      }
-
-      // check hand-ball distance
-      if (hands.length > 0 && ballDetected) {
-        for (let h of hands) {
-          for (let key of h.keypoints) {
-            let x = key.x * canvas.width;
-            let y = key.y * canvas.height;
-            // draw keypoints
-            ctx.fillStyle = 'red';
-            ctx.beginPath();
-            ctx.arc(x, y, 5, 0, 2 * Math.PI);
-            ctx.fill();
-
-            // distance from ball center
-            let bx = ball.bbox[0] + ball.bbox[2] / 2;
-            let by = ball.bbox[1] + ball.bbox[3] / 2;
-            let dist = Math.hypot(bx - x, by - y);
-            if (dist < (ball.bbox[2] / 2) + 30) {  // threshold
-              handball = true;
-            }
-          }
-        }
-      }
-
-      // goal detection: define a goal line area
-      // for example: bottom region of canvas
-      const lineY = canvas.height * 0.8;
-      ctx.strokeStyle = 'white';
-      ctx.beginPath();
-      ctx.moveTo(0, lineY);
-      ctx.lineTo(canvas.width, lineY);
-      ctx.stroke();
-
-      if (ballDetected) {
-        let byCenter = ball.bbox[1] + ball.bbox[3] / 2;
-        if (byCenter > lineY) {
-          goal = true;
-        }
-      }
-
-      // decide result
-      if (handball) {
-        resultDiv.innerText = '❌ HANDBALL – FOUL';
-      } else if (goal) {
-        resultDiv.innerText = '⚽ GOAL ALLOWED';
-      } else if (ballDetected) {
-        resultDiv.innerText = 'Ball detected';
-      } else {
-        resultDiv.innerText = 'No ball';
-      }
-
-      requestAnimationFrame(detectLoop);
-    }
-
-    init();
-  </script>
+    <script src="script.js"></script>
 </body>
+
 </html>
